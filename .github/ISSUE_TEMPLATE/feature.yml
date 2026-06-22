@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose a new command, flag, or change to cockroach-cli or the pkg/ SDK.
+title: "[feat] <short summary>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for a concrete proposal. For early-stage exploration, please
+        open a GitHub Discussion first — it's easier to iterate there.
+
+        Keep in mind this tool is **product-agnostic**: it should stay useful to
+        any Cockroach Network product, not encode one product's specifics.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What operator / developer pain does this address? Who feels it today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the surface (CLI flag / subcommand, or pkg/ API) and any new behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches and why this one wins.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (cmd/cockroach-cli)
+        - pkg/pack (SDK)
+        - release / install tooling
+        - docs
+        - cross-cutting
+    validations:
+      required: true
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related links
+      description: Related issues, PRs, registry schema notes, or upstream references.
+    validations:
+      required: false

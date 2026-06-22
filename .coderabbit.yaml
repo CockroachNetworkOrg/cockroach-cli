@@ -1,0 +1,21 @@
+# CodeRabbit config — lean. AI review assists; it never blocks a merge.
+# https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+reviews:
+  # "chill" = high-signal, fewer nits. We don't want a wall of style comments
+  # on a small Go CLI/SDK.
+  profile: chill
+  # Never let the bot request changes / gate the merge — humans decide.
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    # Don't review vendored/generated noise.
+    - "!**/*.gen.go"
+    - "!go.sum"
+chat:
+  auto_reply: true

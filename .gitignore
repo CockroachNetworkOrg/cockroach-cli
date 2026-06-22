@@ -1,0 +1,14 @@
+# Binaries
+/cockroach-cli
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+
+# GoReleaser
+/dist/
+
+# OS
+.DS_Store

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Pre-commit — fast mirror of the CI gates, scoped to staged Go files so it
+# stays quick. Mirrors .github/workflows/ci.yml's go-build-test job (the gofmt
+# + vet gates). The full `go test` run is left to CI. Bypass: git commit --no-verify.
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_lib.sh
+. "$HOOK_DIR/_lib.sh"
+
+# Files staged for this commit (added/copied/modified/renamed — not deletions).
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -z "$STAGED" ] && exit 0
+
+GO_FILES="$(printf '%s\n' "$STAGED" | grep -E '\.go$' || true)"
+[ -z "$GO_FILES" ] && exit 0
+
+if ! have go; then
+  fail "Go" "install Go 1.25+ (matches go.mod), or commit with --no-verify"
+fi
+
+# gofmt check, mirroring the CI Gofmt gate. Only scan staged files (fast).
+step "gofmt (staged Go files)"
+UNFORMATTED="$(printf '%s\n' "$GO_FILES" | xargs gofmt -l 2>/dev/null || true)"
+if [ -n "$UNFORMATTED" ]; then
+  printf '%s    not gofmt-clean:%s\n' "$C_RED" "$C_RST" >&2
+  printf '%s\n' "$UNFORMATTED" | sed 's#^#      #' >&2
+  fail "Gofmt" "run 'gofmt -w .' then 'git add' the files"
+fi
+ok "gofmt clean"
+
+step "go vet ./..."
+if ! (cd "$ROOT" && go vet ./... 2>&1); then
+  fail "go vet" "address the vet findings above"
+fi
+ok "vet clean"
+
+printf '%spre-commit OK%s\n' "$C_GRN$C_BLD" "$C_RST"

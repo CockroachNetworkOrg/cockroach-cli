@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a defect in cockroach-cli (the CLI binary or the pkg/ SDK).
+title: "[bug] <short summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for a reproducible defect. For an open question or
+        design discussion, please open a GitHub Discussion instead.
+
+        **Do not include secrets, tokens, database credentials, or personal
+        data** in the steps, logs, or screenshots.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part does this affect?
+      options:
+        - CLI (cmd/cockroach-cli — args, help, output)
+        - pkg/pack (importer / registry / boundary SDK)
+        - release / install (goreleaser, Homebrew tap, install-cli.sh)
+        - other (specify in description)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Actual behavior, including the exact error message if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal commands. A small repro is the fastest path to a fix.
+      placeholder: |
+        1. export COCKROACH_REGISTRY_URL=...
+        2. cockroach-cli pack install --country IN --dry-run
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `cockroach-cli version` (or the git short SHA / release tag).
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: OS, arch, Go version, install method (brew / go install / curl).
+      placeholder: "macOS 14.4 arm64, Go 1.25.0, brew"
+    validations:
+      required: false

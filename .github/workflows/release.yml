@@ -1,0 +1,80 @@
+# =============================================================================
+# Release the standalone `cockroach-cli` binary on a v* tag.
+#
+# Cross-compiles the CLI for every OS/arch, attaches archives + checksums to
+# the GitHub Release, and bumps the Homebrew tap formula. Driven by
+# .goreleaser.yaml.
+#
+# ── Required secrets ─────────────────────────────────────────────────────────
+#   GITHUB_TOKEN               Auto-provided by Actions. Used to create/update
+#                              the GitHub Release and upload the archives +
+#                              checksums. Needs `contents: write` (granted below).
+#   HOMEBREW_TAP_GITHUB_TOKEN  A PAT (classic or fine-grained) with `contents:
+#                              write` on github.com/cockroachnetworkorg/homebrew-tap.
+#                              GoReleaser uses it to commit the updated formula to
+#                              that DIFFERENT repo — GITHUB_TOKEN can't push there.
+#   SCOOP_BUCKET_GITHUB_TOKEN  A PAT with `contents: write` on
+#                              github.com/cockroachnetworkorg/scoop-bucket. Commits
+#                              the Scoop manifest bump to that DIFFERENT repo.
+#   WINGET_PKGS_GITHUB_TOKEN   A PAT with `contents: write` on the fork
+#                              github.com/cockroachnetworkorg/winget-pkgs +
+#                              permission to open a PR into microsoft/winget-pkgs.
+#
+# ── Prerequisites ────────────────────────────────────────────────────────────
+#   - The tap repo  github.com/cockroachnetworkorg/homebrew-tap  must already
+#     exist (create it empty). GoReleaser writes Formula/cockroach-cli.rb into it.
+#   - The bucket repo  github.com/cockroachnetworkorg/scoop-bucket  must already
+#     exist (create it empty). GoReleaser writes cockroach-cli.json into it.
+#   - The fork  github.com/cockroachnetworkorg/winget-pkgs  (a fork of
+#     microsoft/winget-pkgs) must already exist; GoReleaser commits the manifest
+#     there and opens a PR into the upstream microsoft/winget-pkgs.
+#   (Each of the three package-manager blocks is independent: a missing token
+#    only skips its own publish — the GitHub Release + archives still ship. See
+#    .goreleaser.yaml for the per-block setup + the winget manual-PR fallback.)
+# =============================================================================
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release + upload archives/checksums
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  goreleaser:
+    name: GoReleaser (cockroach-cli)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # GoReleaser needs full history + tags to compute the changelog and
+      # resolve the previous tag.
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Match go.mod's toolchain (go 1.25.0).
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: go.sum
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pushes the formula bump to the separate homebrew-tap repo.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          # Pushes the Scoop manifest bump to the separate scoop-bucket repo.
+          SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
+          # Commits the winget manifest to the winget-pkgs fork + opens the upstream PR.
+          WINGET_PKGS_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_TOKEN }}

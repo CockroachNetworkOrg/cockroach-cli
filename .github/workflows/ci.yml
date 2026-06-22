@@ -1,0 +1,80 @@
+name: CI
+
+# CI runs on every push / PR to main: build, vet, test (Go 1.25).
+#
+# Most of the pack/importer tests are DB-free (they run InstallPack in --dry-run
+# mode: download/read → sha256+size verify → gunzip → row-count, then stop before
+# any COPY). A few assertion tests touch Postgres — they read TEST_DATABASE_URL,
+# fall back to the dev compose DSN, and t.Skip cleanly when neither is reachable.
+# We provide a Postgres service + TEST_DATABASE_URL so those actually run here.
+#
+# Concurrency group is per-branch so a new push cancels an in-flight CI run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-build-test:
+    name: Go build + vet + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cockroach
+          POSTGRES_PASSWORD: cockroach
+          POSTGRES_DB: cockroach_test
+        ports:
+          - 5432:5432
+        # Wait until pg_isready succeeds before letting steps run.
+        options: >-
+          --health-cmd "pg_isready -U cockroach -d cockroach_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Picked up by the DB-backed assertion tests (else they t.Skip).
+      TEST_DATABASE_URL: postgres://cockroach:cockroach@localhost:5432/cockroach_test?sslmode=disable
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build
+        run: go build ./...
+
+      - name: Gofmt
+        # Fail if any file isn't gofmt-clean; gofmt -l prints the offenders.
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-clean — run 'gofmt -w .':"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -count=1 -timeout=5m ./...

@@ -1,0 +1,209 @@
+# =============================================================================
+# GoReleaser — standalone release of the `cockroach-cli` binary.
+#
+# The Go module root IS this repo root (module
+# github.com/cockroachnetworkorg/cockroach-cli), so builds resolve from "." —
+# no `dir:` indirection. Produces per-OS/arch archives + a sha256 checksums
+# file + a Homebrew formula + a Scoop manifest + a winget manifest, all attached
+# to the GitHub release the tag creates.
+#
+# Triggered from .github/workflows/release.yml on a `v*` tag. Build identity is
+# injected into internal/version with -ldflags -X, so a brew/curl/go-install
+# build reports the same Version/Commit/BuildDate.
+#
+# ── PACKAGE-MANAGER PREREQUISITES (owner setup, one-time) ────────────────────
+# Each "publish to a DIFFERENT repo" target needs that repo to pre-exist AND a
+# PAT secret wired into release.yml (the default GITHUB_TOKEN cannot push to a
+# repo other than this one):
+#
+#   Homebrew (brews:)  → repo  cockroachnetworkorg/homebrew-tap   must exist
+#                        secret HOMEBREW_TAP_GITHUB_TOKEN  (contents: write on it)
+#   Scoop    (scoops:) → repo  cockroachnetworkorg/scoop-bucket   must exist
+#                        secret SCOOP_BUCKET_GITHUB_TOKEN  (contents: write on it)
+#   winget   (winget:) → FORK  cockroachnetworkorg/winget-pkgs    must exist
+#                        (a fork of microsoft/winget-pkgs; GoReleaser commits the
+#                        manifest there, then opens a PR INTO microsoft/winget-pkgs)
+#                        secret WINGET_PKGS_GITHUB_TOKEN  (contents: write on the
+#                        fork + ability to open the upstream PR)
+#
+# MANUAL FALLBACK for winget: if you'd rather not maintain the fork + token,
+# delete the `winget:` block below and instead open a manual PR to
+# microsoft/winget-pkgs with a generated manifest (wingetcreate update
+# CockroachNetwork.CockroachCLI --version X.Y.Z --urls <release zip urls>).
+# Scoop has no such fallback worth keeping — its bucket repo is cheap; keep it.
+#
+# Validate locally without releasing:  goreleaser check
+# Dry-run a full build (no publish):    goreleaser release --snapshot --clean
+# =============================================================================
+version: 2
+
+project_name: cockroach-cli
+
+before:
+  hooks:
+    # Keep go.sum tidy/verified before building.
+    - go mod download
+
+builds:
+  - id: cockroach-cli
+    binary: cockroach-cli
+    main: ./cmd/cockroach-cli
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    # Reproducible builds: strip the embedded build path.
+    flags:
+      - -trimpath
+    # Build identity injected into internal/version. GoReleaser fills the
+    # template vars from the git tag/commit.
+    ldflags:
+      - -s -w
+      - -X github.com/cockroachnetworkorg/cockroach-cli/internal/version.Version={{.Version}}
+      - -X github.com/cockroachnetworkorg/cockroach-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/cockroachnetworkorg/cockroach-cli/internal/version.BuildDate={{.Date}}
+
+archives:
+  - id: cockroach-cli
+    ids: [cockroach-cli]
+    # tar.gz everywhere, zip on Windows — the install-cli.sh script expects
+    # exactly these names (see scripts/install-cli.sh: archive resolution).
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # cockroach-cli_<version>_<os>_<arch>.<ext> — stable, scriptable naming.
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README*
+
+# Single checksums.txt (sha256) over every archive — the curl installer
+# downloads this and verifies the archive before extracting.
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  # Used by `--snapshot` dry runs when there is no clean tag.
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+# ── Homebrew tap ────────────────────────────────────────────────────────────
+# Publishes a `cockroach-cli` formula to the cockroachnetworkorg/homebrew-tap
+# repo so users can `brew install cockroachnetworkorg/tap/cockroach-cli`.
+#
+# PREREQUISITES (see .github/workflows/release.yml header):
+#   1. The repo  github.com/cockroachnetworkorg/homebrew-tap  MUST exist.
+#   2. A secret HOMEBREW_TAP_GITHUB_TOKEN (a PAT with `contents: write` on that
+#      tap repo) is exposed to the release workflow — the default GITHUB_TOKEN
+#      cannot push to a DIFFERENT repo.
+brews:
+  - name: cockroach-cli
+    ids: [cockroach-cli]
+    repository:
+      owner: cockroachnetworkorg
+      name: homebrew-tap
+      # The PAT that can push to the tap repo (see release.yml).
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://cockroachnetwork.org"
+    description: "Cockroach Network ecosystem CLI — install civic country data packs and boundary GeoJSON from a checksummed registry."
+    license: "Apache-2.0"
+    # Commit identity for the auto-generated formula bump.
+    commit_author:
+      name: cockroach-cli-releaser
+      email: bot@cockroachnetwork.org
+    install: |
+      bin.install "cockroach-cli"
+    # Smoke test: `version` runs offline (no DB), so it is safe in the brew
+    # sandbox and proves the binary executes + reports an injected version.
+    test: |
+      assert_match "cockroach-cli", shell_output("#{bin}/cockroach-cli version")
+
+# ── Scoop bucket (Windows) ──────────────────────────────────────────────────
+# Publishes a `cockroach-cli` Scoop manifest to the cockroachnetworkorg/scoop-bucket
+# repo so Windows users can:
+#   scoop bucket add cockroachnetwork https://github.com/cockroachnetworkorg/scoop-bucket
+#   scoop install cockroach-cli
+# Scoop consumes the SAME Windows .zip archives (id cockroach-cli) the release
+# already attaches; GoReleaser fills in the per-arch URL + sha256 from checksums.txt.
+#
+# PREREQUISITES (see .goreleaser.yaml header + release.yml):
+#   1. The repo  github.com/cockroachnetworkorg/scoop-bucket  MUST exist (empty is fine).
+#   2. A secret SCOOP_BUCKET_GITHUB_TOKEN (a PAT with `contents: write` on that
+#      bucket repo) is exposed to the release workflow — GITHUB_TOKEN cannot push
+#      to a DIFFERENT repo.
+scoops:
+  - name: cockroach-cli
+    ids: [cockroach-cli]
+    repository:
+      owner: cockroachnetworkorg
+      name: scoop-bucket
+      # The PAT that can push to the bucket repo (see release.yml).
+      token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+    homepage: "https://cockroachnetwork.org"
+    description: "Cockroach Network ecosystem CLI — install civic country data packs and boundary GeoJSON from a checksummed registry."
+    license: "Apache-2.0"
+    # Commit identity for the auto-generated manifest bump.
+    commit_author:
+      name: cockroach-cli-releaser
+      email: bot@cockroachnetwork.org
+
+# ── winget manifest (Windows) ───────────────────────────────────────────────
+# Generates the three-file winget manifest (version/installer/locale) and commits
+# it to a FORK of microsoft/winget-pkgs (cockroachnetworkorg/winget-pkgs), then
+# opens a PR into microsoft/winget-pkgs. Users then:
+#   winget install CockroachNetwork.CockroachCLI
+# winget consumes the SAME Windows .zip archives the release attaches.
+#
+# PREREQUISITES (see .goreleaser.yaml header + release.yml):
+#   1. A FORK  github.com/cockroachnetworkorg/winget-pkgs  of microsoft/winget-pkgs
+#      MUST exist (winget requires the PR to originate from a fork of the official repo).
+#   2. A secret WINGET_PKGS_GITHUB_TOKEN (a PAT with `contents: write` on the fork
+#      + permission to open the upstream PR) is exposed to the release workflow.
+#   3. The publisher identifier (CockroachNetwork.CockroachCLI) must match the
+#      casing winget moderators approve — keep it stable once accepted.
+# If you'd rather not maintain the fork/token, delete this block and use the
+# manual `wingetcreate` path documented in the header.
+# (Top-level key is `winget:` — singular — in the GoReleaser v2 schema.)
+winget:
+  - name: cockroach-cli
+    ids: [cockroach-cli]
+    publisher: CockroachNetwork
+    short_description: "Cockroach Network ecosystem CLI — country data packs + boundary GeoJSON from a checksummed registry."
+    license: "Apache-2.0"
+    homepage: "https://cockroachnetwork.org"
+    # PackageIdentifier in the winget catalog: <Publisher>.<Package>.
+    package_identifier: CockroachNetwork.CockroachCLI
+    license_url: "https://github.com/cockroachnetworkorg/cockroach-cli/blob/main/LICENSE"
+    copyright: "Cockroach Network"
+    release_notes_url: "https://github.com/cockroachnetworkorg/cockroach-cli/releases/tag/{{ .Tag }}"
+    repository:
+      owner: cockroachnetworkorg
+      name: winget-pkgs
+      branch: "cockroach-cli-{{ .Version }}"
+      # The PAT that can push to the winget-pkgs fork (see release.yml).
+      token: "{{ .Env.WINGET_PKGS_GITHUB_TOKEN }}"
+      # Open the PR into the official microsoft/winget-pkgs repo.
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    commit_author:
+      name: cockroach-cli-releaser
+      email: bot@cockroachnetwork.org

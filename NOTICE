@@ -1,0 +1,42 @@
+cockroach-cli — the operator + developer CLI and shared Go SDK
+for the Cockroach Network project (https://cockroachnetwork.org)
+https://github.com/cockroachnetworkorg/cockroach-cli
+
+Copyright 2026 Saad (https://developedbysaad.com)
+                and Cockroach Network contributors
+
+This product includes software developed at Cockroach Network
+(https://github.com/cockroachnetworkorg/cockroach-cli).
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this file except in compliance with the License. You may obtain
+a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The CLI is product-agnostic: it installs civic country data packs and
+boundary GeoJSON from a static, checksummed registry into any Postgres
+database, and its `pkg/` libraries (pack loader, shared schema) are
+imported by Cockroach products such as Cockroach Reporters.
+
+Governance: see GOVERNANCE.md / the project umbrella at
+https://cockroachnetwork.org. To support the project financially, in
+infrastructure, or in time: https://cockroachnetwork.org/support
+
+
+Third-party software
+====================
+
+This product depends on the following third-party Go modules. Full
+per-module licenses are reproduced under each module's directory in the
+Go module cache. The complete dependency list is in go.mod / go.sum.
+
+- github.com/spf13/cobra (Apache-2.0) — command-line interface framework.
+  https://github.com/spf13/cobra
+- github.com/spf13/pflag (BSD-3-Clause) — POSIX/GNU-style flag parsing.
+  https://github.com/spf13/pflag
+- github.com/jackc/pgx/v5 (MIT) — Postgres driver, used to apply packs and
+  the shared schema into the target database.
+  https://github.com/jackc/pgx
+
+Full Go dependency list: see go.mod.
