@@ -72,6 +72,41 @@ no second copy of the loader logic. To add a subcommand:
 3. Add the one-line usage to the `usage()` text and the package doc comment.
 4. Keep output scriptable and exit codes consistent (usage errors exit 2).
 
+## Developing against a consumer (e.g. Cockroach Reporters)
+
+`pkg/` is consumed by other repos by **version** (they `require` a tagged
+release — they do **not** vendor a local copy). When a change here needs testing
+against a consumer before you tag it, point the consumer at your local checkout:
+
+```bash
+# clone both side by side
+git clone https://github.com/cockroachnetworkorg/reporters
+git clone https://github.com/cockroachnetworkorg/cockroach-cli   # this repo
+
+# preferred: a Go workspace at the parent dir (local-only — gitignore it)
+cd <parent-of-both-repos>
+go work init ./reporters/backend ./cockroach-cli
+# now go build / go test inside reporters/backend use your local cockroach-cli
+```
+
+`go.work` keeps the consumer's `go.mod` clean (no committed `replace`). The
+alternative is a temporary `replace` in the consumer's `go.mod` — fine locally,
+but **never commit it**. Remove the workspace/replace before pushing the consumer.
+
+## Releasing (version tags)
+
+A change reaches consumers only once it's **tagged** — Go fetches modules by
+version, not by branch:
+
+```bash
+git tag v0.2.0            # semver; bump per the pkg/ contract above
+git push origin v0.2.0
+```
+
+Then bump the consumer: set `require github.com/cockroachnetworkorg/cockroach-cli
+v0.2.0` in `reporters/backend/go.mod` and run `go mod tidy`. A breaking `pkg/`
+change requires a major bump.
+
 ## Issue-first workflow
 
 Every code change starts from an issue, and you wait for a maintainer go-ahead
