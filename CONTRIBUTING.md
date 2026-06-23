@@ -99,13 +99,42 @@ A change reaches consumers only once it's **tagged** — Go fetches modules by
 version, not by branch:
 
 ```bash
-git tag v0.2.0            # semver; bump per the pkg/ contract above
-git push origin v0.2.0
+git tag v0.2.0                          # semver; bump per the pkg/ contract above
+git push origin v0.2.0                  # ⚠️ a plain `git push` does NOT push tags
+git ls-remote --tags origin v0.2.0      # VERIFY it landed (this MUST print a line)
 ```
 
+> ⚠️ **`git push` does not push tags.** You must push the tag by name
+> (`git push origin v0.2.0`). Confirm it reached the remote with
+> `git ls-remote --tags origin v0.2.0` — a `refs/tags/v0.2.0` line is the only
+> proof. **Don't** use `git tag -v` to check: these are lightweight tags, so it
+> only checks a GPG signature and errors `cannot verify a non-tag object` — that
+> error is expected and does not mean the tag is missing.
+
+**What happens after the tag.** Pushing a `v*` tag fires
+[`.github/workflows/release.yml`](.github/workflows/release.yml) → **GoReleaser**
+([`.goreleaser.yaml`](.goreleaser.yaml)): it cross-compiles the CLI for
+linux/darwin/windows × amd64/arm64, creates a **GitHub Release** with the
+archives + a sha256 `checksums.txt`, and bumps the **Homebrew tap**, **Scoop
+bucket**, and **winget** manifests (each gated on its own PAT secret; a missing
+one only skips that publish). The version is injected via ldflags into
+`internal/version`, so brew / curl / `go install` builds all report the same
+`cockroach-cli version`.
+
 Then bump the consumer: set `require github.com/cockroachnetworkorg/cockroach-cli
-v0.2.0` in `reporters/backend/go.mod` and run `go mod tidy`. A breaking `pkg/`
-change requires a major bump.
+v0.2.0` in `reporters/backend/go.mod` and run `go mod tidy` (if the tag is
+minutes-fresh and the Go proxy 404s, use `GOPROXY=direct GOSUMDB=off go mod tidy`
+once, then drop it). A breaking `pkg/` change requires a major bump.
+
+> **A published version is permanent.** Once `v0.2.0` is fetched, the Go checksum
+> database (`sum.golang.org`) records its content hash immutably — you can never
+> re-publish `v0.2.0` with different content (a force-pushed re-tag breaks
+> `go get` for everyone with `SECURITY ERROR: checksum mismatch`). To fix a bug,
+> ship the next patch (`v0.2.1`). Releases are forever.
+
+The full cross-repo release flow (CLI + reporters, in order) and the *why* behind
+the immutability rule live in the docs:
+[Releasing & versioning](https://docs.cockroachnetwork.org/reporters/for-developers/releasing-and-versioning/).
 
 ## Issue-first workflow
 

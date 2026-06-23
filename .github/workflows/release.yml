@@ -65,6 +65,38 @@ jobs:
           go-version: "1.25"
           cache-dependency-path: go.sum
 
+      # Preflight: GoReleaser pushes the brew/scoop/winget bumps to SEPARATE repos
+      # AFTER it has already created the GitHub Release + uploaded archives. If a
+      # tap repo is missing, the release publishes half-way (Release exists, formula
+      # push 404s) — a confusing partial state. Fail FAST here instead, but ONLY for
+      # the targets whose token secret is set (an unset token = that block is a no-op
+      # in .goreleaser.yaml, so a fork not using it must not be blocked).
+      - name: Preflight — package-manager tap repos exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # gh api auth (read-only repo lookups)
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
+          WINGET_PKGS_GITHUB_TOKEN: ${{ secrets.WINGET_PKGS_GITHUB_TOKEN }}
+        run: |
+          fail=0
+          # check_repo <token> <owner/repo> <secret-name> — only enforced when the
+          # token is set (else GoReleaser skips that publish anyway).
+          check_repo() {
+            local token="$1" repo="$2" secret="$3"
+            [ -z "$token" ] && { echo "· $secret unset → skipping $repo publish (not enforced)."; return; }
+            if gh api "repos/$repo" --silent 2>/dev/null; then
+              echo "✓ $repo exists."
+            else
+              echo "::error title=Missing tap repo::$secret is set but $repo does not exist (or the token can't see it). GoReleaser would create the GitHub Release, then fail pushing the bump → a half-published release. Create $repo (empty is fine) or unset $secret, then re-run."
+              fail=1
+            fi
+          }
+          check_repo "$HOMEBREW_TAP_GITHUB_TOKEN" "cockroachnetworkorg/homebrew-tap" "HOMEBREW_TAP_GITHUB_TOKEN"
+          check_repo "$SCOOP_BUCKET_GITHUB_TOKEN" "cockroachnetworkorg/scoop-bucket"  "SCOOP_BUCKET_GITHUB_TOKEN"
+          # winget commits to the org's FORK of microsoft/winget-pkgs (see .goreleaser.yaml).
+          check_repo "$WINGET_PKGS_GITHUB_TOKEN"  "cockroachnetworkorg/winget-pkgs"  "WINGET_PKGS_GITHUB_TOKEN"
+          exit $fail
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
