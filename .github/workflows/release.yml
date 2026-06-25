@@ -54,7 +54,7 @@ jobs:
       # GoReleaser needs full history + tags to compute the changelog and
       # resolve the previous tag.
       - name: Checkout (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
